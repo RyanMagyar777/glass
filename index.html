@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>4:2 Camera View</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0b0f;
+      color: #f3f3f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      background: radial-gradient(circle at top, #1b1b29, #0b0b0f 55%);
+    }
+
+    .app {
+      width: min(960px, 100%);
+      display: grid;
+      gap: 20px;
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 36px);
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin: 0;
+      color: #b7b7c7;
+      line-height: 1.5;
+    }
+
+    .viewer {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 1;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #141423;
+      border: 1px solid #26263b;
+      display: grid;
+      place-items: center;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(10, 10, 16, 0.72);
+      text-align: center;
+      padding: 24px;
+      transition: opacity 0.2s ease;
+    }
+
+    .overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #5c4dff;
+      color: white;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    button.secondary {
+      background: #1e1e32;
+      color: #d6d6ef;
+      border: 1px solid #30304a;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(92, 77, 255, 0.3);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .status {
+      font-size: 13px;
+      color: #a2a2b8;
+    }
+
+    footer {
+      font-size: 12px;
+      color: #8c8ca3;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>4:2 Camera View</h1>
+      <p>Use your camera in a 4:2 (2:1) frame. Works best on HTTPS or localhost.</p>
+    </header>
+
+    <section class="viewer" aria-live="polite">
+      <video id="camera" autoplay playsinline muted></video>
+      <div class="overlay" id="overlay">
+        <strong>Camera paused</strong>
+        <span class="status" id="status">Click “Enable camera” to begin.</span>
+      </div>
+    </section>
+
+    <div class="controls">
+      <button id="start">Enable camera</button>
+      <button id="stop" class="secondary" disabled>Stop camera</button>
+      <button id="flip" class="secondary" disabled>Switch camera</button>
+    </div>
+
+    <footer>
+      Tip: grant camera permissions when prompted. On mobile, the switch button toggles front/back cameras.
+    </footer>
+  </main>
+
+  <script>
+    const video = document.getElementById("camera");
+    const overlay = document.getElementById("overlay");
+    const statusText = document.getElementById("status");
+    const startButton = document.getElementById("start");
+    const stopButton = document.getElementById("stop");
+    const flipButton = document.getElementById("flip");
+
+    let currentStream = null;
+    let currentFacingMode = "user";
+
+    const updateOverlay = (message, visible = true) => {
+      statusText.textContent = message;
+      overlay.classList.toggle("hidden", !visible);
+    };
+
+    const stopStream = () => {
+      if (currentStream) {
+        currentStream.getTracks().forEach((track) => track.stop());
+        currentStream = null;
+      }
+      video.srcObject = null;
+      stopButton.disabled = true;
+      flipButton.disabled = true;
+      updateOverlay("Camera stopped.");
+    };
+
+    const startStream = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        updateOverlay("Camera API not supported in this browser.");
+        return;
+      }
+
+      updateOverlay("Requesting camera access…");
+
+      try {
+        const constraints = {
+          video: {
+            facingMode: currentFacingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 640 },
+          },
+          audio: false,
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream?.getTracks().forEach((track) => track.stop());
+        currentStream = stream;
+        video.srcObject = stream;
+        stopButton.disabled = false;
+        flipButton.disabled = false;
+        updateOverlay("", false);
+      } catch (error) {
+        console.error(error);
+        updateOverlay("Unable to access camera. Check permissions or HTTPS.");
+      }
+    };
+
+    startButton.addEventListener("click", startStream);
+    stopButton.addEventListener("click", stopStream);
+    flipButton.addEventListener("click", async () => {
+      currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+      await startStream();
+    });
+
+    window.addEventListener("beforeunload", stopStream);
+  </script>
+</body>
+</html>
